@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Flappy Dev 🐦💻</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 font-mono">
+
+  <!-- Config Panel -->
+  <div id="configPanel" class="absolute top-4 left-4 z-50 flex flex-col gap-2 bg-slate-800/80 p-4 rounded shadow-lg">
+    <label class="text-xs text-white">🎨 Theme</label>
+    <select id="themeSelector" class="text-black px-2 py-1 rounded">
+      <option value="dev">Dev</option>
+      <option value="matrix">Matrix</option>
+      <option value="night">Night</option>
+    </select>
+
+    <label class="text-xs mt-2 text-white">🎮 Difficulty</label>
+    <select id="difficultySelector" class="text-black px-2 py-1 rounded">
+      <option value="easy">Easy</option>
+      <option value="medium" selected>Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+  </div>
+
+  <!-- Score Display -->
+  <div id="scoreBoard" class="absolute top-4 left-1/2 transform -translate-x-1/2 z-40 text-white text-lg font-bold">
+    Score: <span id="scoreValue">0</span>
+  </div>
+
+  <!-- Canvas -->
+  <canvas id="gameCanvas" class="block w-screen h-screen"></canvas>
+
+  <!-- Game Over -->
+  <div id="gameOverScreen" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 text-center hidden">
+    <h1 class="text-yellow-300 text-3xl font-bold">Game Over!</h1>
+    <p id="scoreDisplay" class="text-white mt-2 text-xl"></p>
+
+    <div class="mt-4">
+      <input id="initialsInput" maxlength="3" placeholder="Your Initials (e.g. KS)" class="px-3 py-2 rounded text-black" />
+      <button id="saveScoreBtn" class="ml-2 bg-blue-500 text-white px-4 py-2 rounded">Save Score</button>
+    </div>
+
+    <h2 class="text-white text-xl mt-6">🏆 Leaderboard</h2>
+    <ol id="leaderboardList" class="text-white mt-2 text-left max-w-xs mx-auto space-y-1"></ol>
+
+    <button onclick="location.reload()" class="mt-6 px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600">Restart</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const themeSelector = document.getElementById("themeSelector");
+    const difficultySelector = document.getElementById("difficultySelector");
+    const configPanel = document.getElementById("configPanel");
+    const scoreBoard = document.getElementById("scoreBoard");
+    const scoreValue = document.getElementById("scoreValue");
+    const gameOverScreen = document.getElementById("gameOverScreen");
+    const scoreDisplay = document.getElementById("scoreDisplay");
+    const initialsInput = document.getElementById("initialsInput");
+    const saveScoreBtn = document.getElementById("saveScoreBtn");
+    const leaderboardList = document.getElementById("leaderboardList");
+
+    const crashSound = new Audio("https://cdn.pixabay.com/download/audio/2022/03/15/audio_426ba4801b.mp3?filename=game-over-arcade-6435.mp3");
+
+    let theme = "dev";
+    let difficulty = "medium";
+    let started = false;
+    let gameOver = false;
+    let score = 0;
+
+    let pipeGap = 170;
+    let pipeSpeed = 2.5;
+    let pipeSpawnInterval = 120;
+    let pipeSpawnTimer = 0;
+
+    difficultySelector.onchange = () => {
+      difficulty = difficultySelector.value;
+      switch (difficulty) {
+        case "easy":
+          pipeGap = 240;
+          pipeSpeed = 2;
+          pipeSpawnInterval = 190;
+          break;
+        case "medium":
+          pipeGap = 170;
+          pipeSpeed = 2.5;
+          pipeSpawnInterval = 150;
+          break;
+        case "hard":
+          pipeGap = 140;
+          pipeSpeed = 3.2;
+          pipeSpawnInterval = 120;
+          break;
+      }
+    };
+
+    themeSelector.onchange = () => {
+      theme = themeSelector.value;
+    };
+
+    const dev = {
+      x: 80,
+      y: canvas.height / 2,
+      width: 40,
+      height: 30,
+      dy: 0,
+      gravity: 0.4,
+      jump: -8,
+      sprite: new Image(),
+      draw() {
+        ctx.drawImage(this.sprite, this.x, this.y, this.width, this.height);
+      },
+      update() {
+        this.dy += this.gravity;
+        this.y += this.dy;
+        if (this.y > canvas.height || this.y < 0) gameOver = true;
+      },
+      flap() {
+        this.dy = this.jump;
+      }
+    };
+
+    dev.sprite.src = "https://i.postimg.cc/FK4fBkC7/flappy-dev.png";
+
+    const pipes = [];
+
+    function createPipe() {
+      const top = Math.random() * (canvas.height / 2);
+      pipes.push({
+        x: canvas.width,
+        topHeight: top,
+        bottomY: top + pipeGap,
+        width: 50,
+        passed: false
+      });
+    }
+
+    function drawPipes() {
+      ctx.fillStyle = theme === "matrix" ? "#00FF00" : "#f43f5e";
+      pipes.forEach(pipe => {
+        ctx.fillRect(pipe.x, 0, pipe.width, pipe.topHeight);
+        ctx.fillRect(pipe.x, pipe.bottomY, pipe.width, canvas.height - pipe.bottomY);
+      });
+    }
+
+    function movePipes() {
+      pipes.forEach(pipe => {
+        pipe.x -= pipeSpeed;
+        if (pipe.x + pipe.width < dev.x && !pipe.passed) {
+          score++;
+          pipe.passed = true;
+        }
+        if (
+          dev.x < pipe.x + pipe.width &&
+          dev.x + dev.width > pipe.x &&
+          (dev.y < pipe.topHeight || dev.y + dev.height > pipe.bottomY)
+        ) {
+          if (!gameOver) {
+            crashSound.currentTime = 0;
+            crashSound.play().catch(() => {});
+          }
+          gameOver = true;
+        }
+      });
+    }
+
+    let frameCount = 0;
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      switch (theme) {
+        case "dev": ctx.fillStyle = "#0f172a"; break;
+        case "matrix": ctx.fillStyle = "#000000"; break;
+        case "night": ctx.fillStyle = "#1e1b4b"; break;
+      }
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (!started) {
+        ctx.fillStyle = "#facc15";
+        ctx.font = "24px monospace";
+        ctx.fillText("Press SPACE or TAP to start", canvas.width / 2 - 160, canvas.height / 2);
+      } else {
+        frameCount++;
+        pipeSpawnTimer++;
+        if (pipeSpawnTimer >= pipeSpawnInterval) {
+          createPipe();
+          pipeSpawnTimer = 0;
+        }
+        dev.update();
+        movePipes();
+      }
+
+      dev.draw();
+      drawPipes();
+      scoreValue.textContent = score;
+
+      if (!gameOver) {
+        requestAnimationFrame(gameLoop);
+      } else {
+        scoreDisplay.textContent = `Final Score: ${score}`;
+        gameOverScreen.classList.remove("hidden");
+      }
+    }
+
+    function startGame() {
+      if (!started) {
+        started = true;
+        configPanel.style.display = "none";
+        gameLoop();
+      }
+      dev.flap();
+    }
+
+    function loadLeaderboard() {
+      const data = JSON.parse(localStorage.getItem("flappy_leaderboard") || "[]");
+      leaderboardList.innerHTML = "";
+      data.forEach(entry => {
+        leaderboardList.innerHTML += `<li>${entry.initials.toUpperCase()} - ${entry.score}</li>`;
+      });
+    }
+
+    function saveScore() {
+      const initials = initialsInput.value.trim().substring(0, 3).toUpperCase();
+      if (!initials) return alert("Please enter initials");
+
+      let leaderboard = JSON.parse(localStorage.getItem("flappy_leaderboard") || "[]");
+      leaderboard.push({ initials, score });
+      leaderboard.sort((a, b) => b.score - a.score);
+      leaderboard = leaderboard.slice(0, 5);
+      localStorage.setItem("flappy_leaderboard", JSON.stringify(leaderboard));
+      loadLeaderboard();
+      saveScoreBtn.disabled = true;
+      initialsInput.disabled = true;
+    }
+
+    saveScoreBtn.addEventListener("click", saveScore);
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Space") startGame();
+    });
+    canvas.addEventListener("click", () => startGame());
+
+    difficultySelector.onchange();
+    loadLeaderboard();
+    gameLoop();
+  </script>
+</body>
+</html>
