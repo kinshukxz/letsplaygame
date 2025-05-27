@@ -190,8 +190,12 @@
 
       if (!started) {
         ctx.fillStyle = "#facc15";
-        ctx.font = "24px monospace";
-        ctx.fillText("Press SPACE or TAP to start", canvas.width / 2 - 160, canvas.height / 2);
+const isMobile = window.innerWidth < 500;
+ctx.font = isMobile ? "16px monospace" : "24px monospace";
+const message = "Press SPACE or TAP to start";
+const textWidth = ctx.measureText(message).width;
+ctx.fillText(message, (canvas.width - textWidth) / 2, canvas.height / 2);
+
       } else {
         frameCount++;
         pipeSpawnTimer++;
